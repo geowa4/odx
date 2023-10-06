@@ -18,22 +18,25 @@ var cfgFile string
 var rootCmd = &cobra.Command{
 	Use:   "odx",
 	Short: "Run one-off scripts and dispose of them",
-	Args:  cobra.RangeArgs(1, 2),
+	Args:  cobra.ArbitraryArgs,
 
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
 		sourceArgs := args
-		if len(args) == 1 {
-			aliases := viper.GetStringMap("aliases")
-			if alias, ok := aliases[args[0]]; !ok {
-				cobra.CheckErr(fmt.Errorf("solo argument %s provided but not found in aliases", args[0]))
-			} else {
-				aliasSlice := alias.([]interface{})
-				sourceArgs = make([]string, len(aliasSlice))
-				for i, elem := range aliasSlice {
-					sourceArgs[i] = elem.(string)
-				}
+
+		// Expand alias if present
+		firstArg := args[0]
+		aliases := viper.GetStringMap("aliases")
+		if alias, ok := aliases[firstArg]; ok {
+			// We found an alias so we'll expand this
+			aliasSlice := alias.([]interface{})
+			sourceArgs = make([]string, len(aliasSlice)+len(args)-1)
+			for i, elem := range aliasSlice {
+				sourceArgs[i] = elem.(string)
+			}
+			for i, elem := range args[1:] {
+				sourceArgs[len(aliasSlice)+i] = elem
 			}
 		}
 
@@ -46,12 +49,12 @@ var rootCmd = &cobra.Command{
 			branch := sourceMap["branch"].(string)
 			path := sourceMap["path"].(string)
 			localScriptFullPath := scripts.DownloadScriptFromGitHub(repo, branch, path, sourceArgs[1])
-			//defer func(name string) {
-			//	_ = os.Remove(name)
-			//}(localScriptFullPath)
+			defer func(name string) {
+				_ = os.Remove(name)
+			}(localScriptFullPath)
 			cobra.CheckErr(syscall.Exec(
 				localScriptFullPath,
-				[]string{},
+				sourceArgs[2:],
 				os.Environ(),
 			))
 		}
